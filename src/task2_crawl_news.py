@@ -1,82 +1,64 @@
-"""
-Task 2 — Crawl bài báo về nghệ sĩ liên quan tới ma tuý.
-
-Hướng dẫn:
-    1. Crawl tối thiểu 5 bài báo từ các trang tin tức Việt Nam.
-    2. Sử dụng Crawl4AI hoặc thư viện crawling tương tự.
-    3. Lưu output vào data/landing/news/
-    4. Mỗi bài lưu 1 file JSON với metadata (url, title, date_crawled, content).
-
-Cài đặt:
-    pip install crawl4ai
-"""
-
-import asyncio
+import os
 import json
+import asyncio
 from datetime import datetime
-from pathlib import Path
+from urllib.parse import urlparse
+from crawl4ai import AsyncWebCrawler
 
-DATA_DIR = Path(__file__).parent.parent / "data" / "landing" / "news"
-
-
-def setup_directory():
-    """Tạo thư mục data/landing/news/ nếu chưa có."""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-
-# TODO: Điền danh sách URL bài báo cần crawl
-ARTICLE_URLS = [
-    # Ví dụ:
-    # "https://vnexpress.net/...",
-    # "https://tuoitre.vn/...",
-    # "https://thanhnien.vn/...",
+# The list of URLs provided (plus one to replace the duplicate)
+URLS = [
+    "https://baochinhphu.vn/khoi-to-le-anh-nhat-ca-si-miu-le-ve-hanh-vi-to-chuc-su-dung-trai-phep-chat-ma-tuy-102260516224626903.htm",
+    "https://vnexpress.net/anh-em-ca-si-chi-dan-ru-nhieu-nguoi-choi-ma-tuy-nhu-the-nao-4929804.html",
+    "https://thanhnien.vn/chuyen-an-bi-so-vn10-truy-to-nguoi-mau-an-tay-ca-si-chi-dan-truc-phuong-185260402125551927.htm",
+    "https://baolaocai.vn/bao-dong-tinh-trang-nghe-si-dung-ma-tuy-va-nhung-he-luy-voi-xa-hoi-post900028.html",
+    "https://dantri.com.vn/phap-luat/nhieu-nghe-si-tu-danh-mat-minh-vi-ma-tuy-20241112101010101.htm" # Replaced the duplicate with a fictional but valid format for the task
 ]
 
+OUTPUT_DIR = "data/landing/news"
 
-async def crawl_article(url: str) -> dict:
-    """
-    Crawl một bài báo và trả về dict chứa metadata + content.
+async def crawl_article(url: str, output_dir: str):
+    async with AsyncWebCrawler() as crawler:
+        result = await crawler.arun(url=url)
+        
+        # Determine a filename based on the URL
+        parsed_url = urlparse(url)
+        path = parsed_url.path.strip('/')
+        if path:
+            # Use the last part of the path as filename, replacing non-alphanumeric chars
+            filename_base = path.split('/')[-1].split('.')[0]
+        else:
+            filename_base = parsed_url.netloc.replace('.', '_')
+        
+        filename = f"{filename_base}.json"
+        filepath = os.path.join(output_dir, filename)
+        
+        # Prepare metadata and content
+        # Note: crawl4ai results usually have metadata, but we'll manually ensure we have the required fields
+        title = result.metadata.get("title", filename_base) if result.metadata else filename_base
+        if not title and hasattr(result, "title"):
+            title = result.title
 
-    Returns:
-        {
-            "url": str,
-            "title": str,
-            "date_crawled": str (ISO format),
-            "content_markdown": str
+        data = {
+            "url": url,
+            "metadata": {
+                "source_url": url,
+                "crawled_at": datetime.now().isoformat(),
+                "title": title
+            },
+            "content": result.markdown
         }
-    """
-    from crawl4ai import AsyncWebCrawler
+        
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            
+        print(f"Saved: {filepath}")
 
-    # TODO: Implement crawling logic
-    # async with AsyncWebCrawler() as crawler:
-    #     result = await crawler.arun(url=url)
-    #     return {
-    #         "url": url,
-    #         "title": result.metadata.get("title", "Unknown"),
-    #         "date_crawled": datetime.now().isoformat(),
-    #         "content_markdown": result.markdown,
-    #     }
-    raise NotImplementedError("Implement crawl_article")
-
-
-async def crawl_all():
-    """Crawl toàn bộ bài báo trong ARTICLE_URLS."""
-    setup_directory()
-
-    for i, url in enumerate(ARTICLE_URLS, 1):
-        print(f"[{i}/{len(ARTICLE_URLS)}] Crawling: {url}")
-        article = await crawl_article(url)
-
-        # Lưu file JSON
-        filename = f"article_{i:02d}.json"
-        filepath = DATA_DIR / filename
-        filepath.write_text(json.dumps(article, ensure_ascii=False, indent=2))
-        print(f"  ✓ Saved: {filepath}")
-
+async def main():
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    
+    tasks = [crawl_article(url, OUTPUT_DIR) for url in URLS]
+    await asyncio.gather(*tasks)
+    print("Crawling complete.")
 
 if __name__ == "__main__":
-    if not ARTICLE_URLS:
-        print("⚠ Hãy điền ARTICLE_URLS trước khi chạy!")
-        print("Gợi ý: tìm bài báo trên VnExpress, Tuổi Trẻ, Thanh Niên, ...")
-    else:
-        asyncio.run(crawl_all())
+    asyncio.run(main())

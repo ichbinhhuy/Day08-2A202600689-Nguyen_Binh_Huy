@@ -1,0 +1,26 @@
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Caches and DBs
+__pycache__/
+*.py[cod]
+*$py.class
+chroma_data/
+.pytest_cache/
+.deepeval/
+
+# Archives
+*.zip
+*.tar
+*.gz
+*.rar
+
+# OS generated
+.DS_Store
+Thumbs.db

@@ -1,5 +1,14 @@
 # Ngày 8 — RAG Pipeline v2
 
+**Thông tin Nhóm:** Nhóm C6 - Phòng 402
+**Thành viên:**
+1. Hà Trung Kiên - 2A202600709
+2. Cao Thị Thu Hà - 2A202600765
+3. Nguyễn Lâm Phương Thảo - 2A202600873
+4. Nguyễn Bình Huy - 2A202600689
+
+---
+
 **Chương 2 | Ngày 8 trong 15**
 
 ---

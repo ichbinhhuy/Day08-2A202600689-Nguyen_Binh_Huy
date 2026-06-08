@@ -40,8 +40,9 @@ TEMPERATURE = 0.3
 
 SYSTEM_PROMPT = """Answer the following question comprehensively in Vietnamese.
 For every statement of fact or claim, immediately insert a citation in brackets
-linking to the specific source (e.g., [Luật Phòng chống ma tuý 2021, Điều 3]
-or [VnExpress, 2024]).
+linking to the EXACT SOURCE NAME and the YEAR (e.g., [8.-Luat-Phong-chong.md, 2021] or [chuyen-an-bi-so.md, 2024]).
+If the year is not explicitly found in the document content or title, use 2024 as the default year.
+Do NOT use generic names like [Document 1].
 
 If the information is not explicitly stated in the provided context or knowledge
 base, state 'Tôi không thể xác minh thông tin này từ nguồn hiện có' rather than
@@ -49,7 +50,7 @@ guessing.
 
 Rules:
 - Only use information from the provided context
-- Every factual claim MUST have a citation
+- Every factual claim MUST have a citation in the format [Source Name, Year]
 - If context is insufficient, say so clearly
 - Structure your answer with clear paragraphs"""
 
@@ -75,20 +76,17 @@ def reorder_for_llm(chunks: list[dict]) -> list[dict]:
     Returns:
         List reordered để maximize LLM attention.
     """
-    # TODO: Implement reordering
-    #
-    # if len(chunks) <= 2:
-    #     return chunks
-    #
-    # # Split into first half (important → đầu) and second half (important → cuối)
-    # reordered = []
-    # for i in range(0, len(chunks), 2):
-    #     reordered.append(chunks[i])  # Odd positions go first
-    # for i in range(len(chunks) - 1 - (len(chunks) % 2 == 0), 0, -2):
-    #     reordered.append(chunks[i])  # Even positions go last (reversed)
-    #
-    # return reordered
-    raise NotImplementedError("Implement reorder_for_llm")
+    if len(chunks) <= 2:
+        return chunks
+
+    # Split into first half (important → đầu) and second half (important → cuối)
+    reordered = []
+    for i in range(0, len(chunks), 2):
+        reordered.append(chunks[i])  # Odd positions go first
+    for i in range(len(chunks) - 1 - (len(chunks) % 2 == 0), 0, -2):
+        reordered.append(chunks[i])  # Even positions go last (reversed)
+
+    return reordered
 
 
 # =============================================================================
@@ -106,25 +104,22 @@ def format_context(chunks: list[dict]) -> str:
     Returns:
         Formatted context string.
     """
-    # TODO: Implement context formatting
-    #
-    # context_parts = []
-    # for i, chunk in enumerate(chunks, 1):
-    #     source = chunk.get("metadata", {}).get("source", f"Source {i}")
-    #     doc_type = chunk.get("metadata", {}).get("type", "unknown")
-    #     context_parts.append(
-    #         f"[Document {i} | Source: {source} | Type: {doc_type}]\n"
-    #         f"{chunk['content']}\n"
-    #     )
-    # return "\n---\n".join(context_parts)
-    raise NotImplementedError("Implement format_context")
+    context_parts = []
+    for i, chunk in enumerate(chunks, 1):
+        source = chunk.get("metadata", {}).get("source", f"Source {i}")
+        doc_type = chunk.get("metadata", {}).get("type", "unknown")
+        context_parts.append(
+            f"--- START OF SOURCE: {source} ---\n"
+            f"{chunk['content']}\n"
+        )
+    return "\n---\n".join(context_parts)
 
 
 # =============================================================================
 # GENERATION
 # =============================================================================
 
-def generate_with_citation(query: str, top_k: int = TOP_K) -> dict:
+def generate_with_citation(query: str, search_query: str = None, top_k: int = TOP_K, chat_history: list = None) -> dict:
     """
     End-to-end RAG generation có citation.
 
@@ -138,6 +133,9 @@ def generate_with_citation(query: str, top_k: int = TOP_K) -> dict:
 
     Args:
         query: Câu hỏi của user
+        search_query: Câu query dùng để tìm kiếm (có thể là HyDE doc). Nếu None thì dùng query.
+        top_k: Số lượng chunks cần retrieve
+        chat_history: Lịch sử hội thoại [{'role': 'user'/'assistant', 'content': '...'}]
 
     Returns:
         {
@@ -146,43 +144,51 @@ def generate_with_citation(query: str, top_k: int = TOP_K) -> dict:
             'retrieval_source': str  # 'hybrid' hoặc 'pageindex'
         }
     """
-    # TODO: Implement generation pipeline
-    #
-    # # Step 1: Retrieve
-    # chunks = retrieve(query, top_k=top_k)
-    #
-    # # Step 2: Reorder
-    # reordered = reorder_for_llm(chunks)
-    #
-    # # Step 3: Format context
-    # context = format_context(reordered)
-    #
-    # # Step 4: Build prompt
-    # user_message = f"""Context:\n{context}\n\n---\n\nQuestion: {query}"""
-    #
-    # # Step 5: Call LLM
-    # from openai import OpenAI
-    # client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    #
-    # response = client.chat.completions.create(
-    #     model="gpt-4o-mini",
-    #     messages=[
-    #         {"role": "system", "content": SYSTEM_PROMPT},
-    #         {"role": "user", "content": user_message}
-    #     ],
-    #     temperature=TEMPERATURE,
-    #     top_p=TOP_P,
-    # )
-    #
-    # answer = response.choices[0].message.content
-    #
-    # # Step 6: Return
-    # return {
-    #     "answer": answer,
-    #     "sources": chunks,
-    #     "retrieval_source": chunks[0].get("source", "hybrid") if chunks else "none"
-    # }
-    raise NotImplementedError("Implement generate_with_citation")
+    if search_query is None:
+        search_query = query
+
+    # Step 1: Retrieve
+    chunks = retrieve(search_query, top_k=top_k)
+
+    # Step 2: Reorder
+    reordered = reorder_for_llm(chunks)
+
+    # Step 3: Format context
+    context = format_context(reordered)
+
+    # Step 4: Build prompt
+    history_text = ""
+    if chat_history:
+        history_text = "Conversation History (for context):\n"
+        for msg in chat_history[-6:]:  # Lấy 6 lượt gần nhất
+            role = "User" if msg["role"] == "user" else "Assistant"
+            history_text += f"{role}: {msg['content']}\n"
+        history_text += "\n---\n\n"
+
+    user_message = f"""{history_text}Context:\n{context}\n\n---\n\nQuestion: {query}"""
+
+    # Step 5: Call LLM
+    from openai import OpenAI
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_message}
+        ],
+        temperature=TEMPERATURE,
+        top_p=TOP_P,
+    )
+
+    answer = response.choices[0].message.content
+
+    # Step 6: Return
+    return {
+        "answer": answer,
+        "sources": chunks,
+        "retrieval_source": chunks[0].get("source", "hybrid") if chunks else "none"
+    }
 
 
 if __name__ == "__main__":

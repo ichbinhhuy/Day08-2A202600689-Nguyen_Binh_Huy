@@ -9,6 +9,18 @@ Yêu cầu:
     - Phải tương thích với embedding model và vector store ở Task 4
 """
 
+import chromadb
+from pathlib import Path
+from sentence_transformers import SentenceTransformer
+
+# Tải model 1 lần (Singleton pattern) để tránh load lại model nhiều lần khi gọi hàm nhiều lần
+_MODEL = None
+
+def get_embedding_model():
+    global _MODEL
+    if _MODEL is None:
+        _MODEL = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+    return _MODEL
 
 def semantic_search(query: str, top_k: int = 10) -> list[dict]:
     """
@@ -26,41 +38,63 @@ def semantic_search(query: str, top_k: int = 10) -> list[dict]:
         }
         Sorted by score descending.
     """
-    # TODO: Implement semantic search
-    #
-    # Bước 1: Embed query bằng cùng model ở Task 4
-    # Bước 2: Query vector store (cosine similarity)
-    # Bước 3: Return top_k results
-    #
-    # Ví dụ với Weaviate:
-    # import weaviate
-    # from sentence_transformers import SentenceTransformer
-    #
-    # model = SentenceTransformer("BAAI/bge-m3")
-    # query_embedding = model.encode(query).tolist()
-    #
-    # client = weaviate.connect_to_local()
-    # collection = client.collections.get("DrugLawDocs")
-    #
-    # results = collection.query.near_vector(
-    #     near_vector=query_embedding,
-    #     limit=top_k,
-    #     return_metadata=MetadataQuery(distance=True)
-    # )
-    #
-    # return [
-    #     {
-    #         "content": obj.properties["content"],
-    #         "score": 1 - obj.metadata.distance,  # distance → similarity
-    #         "metadata": {"source": obj.properties["source"], ...}
-    #     }
-    #     for obj in results.objects
-    # ]
-    raise NotImplementedError("Implement semantic_search")
+    model = get_embedding_model()
+    query_embedding = model.encode(query).tolist()
+
+    # Kết nối ChromaDB
+    current_dir = Path(__file__).parent
+    db_path = str(current_dir.parent / "chroma_data")
+    
+    try:
+        client = chromadb.PersistentClient(path=db_path)
+        collection = client.get_collection("DrugLawDocs")
+    except Exception as e:
+        print("Không tìm thấy collection. Bạn đã chạy task 4 để tạo index chưa?")
+        return []
+
+    # Thực hiện search theo vector
+    results = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=top_k,
+        include=["documents", "metadatas", "distances"]
+    )
+
+    out_results = []
+    if results["ids"] and len(results["ids"][0]) > 0:
+        docs = results["documents"][0]
+        metadatas = results["metadatas"][0]
+        distances = results["distances"][0]
+        
+        for i in range(len(docs)):
+            # ChromaDB mặc định trả về L2 distance. Để có score giống similarity (càng lớn càng tốt), ta chuyển đổi:
+            dist = distances[i]
+            score = 1.0 / (1.0 + dist)
+            
+            meta = metadatas[i] or {}
+            out_results.append({
+                "content": docs[i],
+                "score": score,
+                "metadata": {
+                    "source": meta.get("source", ""),
+                    "type": meta.get("type", ""),
+                    "chunk_index": meta.get("chunk_index", 0)
+                }
+            })
+
+    # Đảm bảo kết quả được sắp xếp giảm dần theo điểm
+    out_results.sort(key=lambda x: x["score"], reverse=True)
+    
+    return out_results
 
 
 if __name__ == "__main__":
-    # Test
-    results = semantic_search("hình phạt cho tội tàng trữ ma tuý", top_k=5)
-    for r in results:
-        print(f"[{r['score']:.3f}] {r['content'][:100]}...")
+    # Test thử trực tiếp
+    print("Testing Semantic Search with ChromaDB...")
+    results = semantic_search("hình phạt cho tội tàng trữ ma tuý", top_k=3)
+    if not results:
+        print("Không có kết quả. Hãy chắc chắn bạn đã chạy Task 4 để đưa dữ liệu vào ChromaDB.")
+    else:
+        for i, r in enumerate(results):
+            # To avoid Windows console UnicodeEncodeError, using ascii-safe strings
+            print(f"\n[{i+1}] Score: {r['score']:.4f} | Source: {r['metadata']['source']}")
+            print(f"{r['content'][:200]}...")
