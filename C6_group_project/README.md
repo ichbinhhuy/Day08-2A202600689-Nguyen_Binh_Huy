@@ -1,11 +1,14 @@
 # Báo Cáo Kiến Trúc Nhóm - RAG Chatbot
 
 **Thông tin Nhóm:** Nhóm C6 - Phòng 402
-**Thành viên:**
-1. Hà Trung Kiên - 2A202600709
-2. Cao Thị Thu Hà - 2A202600765
-3. Nguyễn Lâm Phương Thảo - 2A202600873
-4. Nguyễn Bình Huy - 2A202600689
+
+## 👥 Phân Công Nhiệm Vụ
+| STT | Họ và Tên | MSSV | Vai trò / Nhiệm vụ chính trong Project |
+|:---:|:---|:---|:---|
+| 1 | Hà Trung Kiên | 2A202600709 | Xây dựng giao diện Chatbot Streamlit, quản lý trạng thái Conversation Memory |
+| 2 | Cao Thị Thu Hà | 2A202600765 | Thiết lập quy trình Evaluation (DeepEval), thu thập và dán nhãn Golden Dataset |
+| 3 | Nguyễn Lâm Phương Thảo | 2A202600873 | Cài đặt thuật toán HyDE, tinh chỉnh Prompt cho LLM Generation có trích dẫn |
+| 4 | Nguyễn Bình Huy | 2A202600689 | Quản lý Vector DB (ChromaDB), đấu nối và tối ưu hoá Hybrid Retrieval Pipeline |
 
 ---
 
